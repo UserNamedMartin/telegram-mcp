@@ -1199,16 +1199,50 @@ _last_reconnect_failure: dict[int, tuple[float, BaseException]] = {}
 _CONN_VERIFY_INTERVAL: float = 30.0  # seconds between live pings
 _RECONNECT_TIMEOUT: float = 30.0  # seconds before a reconnect attempt is abandoned
 _RECONNECT_FAILURE_TTL: float = 30.0  # seconds a failed reconnect result is replayed to waiters
+_DISCONNECT_TIMEOUT: float = 5.0  # seconds before a best-effort disconnect is abandoned
+
+
+async def _disconnect_bounded(cl: TelegramClient) -> None:
+    """Best-effort disconnect that cannot hang the reconnect holding the lock.
+
+    On a half-open socket Telethon's disconnect() can wait forever for its
+    send/receive loops; every later reconnect then hangs on the same call.
+    """
+    try:
+        await asyncio.wait_for(cl.disconnect(), timeout=_DISCONNECT_TIMEOUT)
+    except Exception:
+        pass
+
+
+def _replace_client(cl: TelegramClient) -> Optional[TelegramClient]:
+    """Put a fresh client on the same session in place of `cl` in ``clients``.
+
+    A connect() that never finishes can leave the old client's sender wedged
+    for good. The fresh client keeps the session and the event handlers; the
+    next tool call connects it. Returns None when `cl` is not a registered client.
+    """
+    label = next((name for name, client in clients.items() if client is cl), None)
+    if label is None:
+        return None
+    try:
+        fresh = _build_client(cl.session, label)
+        for callback, event in cl.list_event_handlers():
+            fresh.add_event_handler(callback, event)
+    except Exception:
+        logging.getLogger("telegram_mcp").error("Could not recreate the Telegram client.")
+        return None
+    clients[label] = fresh
+    logging.getLogger("telegram_mcp").warning(
+        "Recreated the Telegram client after a stuck reconnect."
+    )
+    return fresh
 
 
 async def _force_reconnect(cl: TelegramClient):
     """Force disconnect + reconnect regardless of is_connected() state."""
     reconnect_logger = logging.getLogger("telegram_mcp")
     reconnect_logger.warning("Forcing reconnect...")
-    try:
-        await cl.disconnect()
-    except Exception:
-        pass
+    await _disconnect_bounded(cl)
     try:
         await asyncio.wait_for(cl.connect(), timeout=_RECONNECT_TIMEOUT)
     except AuthKeyDuplicatedError as exc:
@@ -1223,16 +1257,16 @@ async def _force_reconnect(cl: TelegramClient):
             "regenerate the burned session with `uv run session_string_generator.py`."
         ) from exc
     except asyncio.TimeoutError as exc:
+        await _disconnect_bounded(cl)
+        replaced = _replace_client(cl) is not None
         raise RuntimeError(
             f"Reconnecting to Telegram timed out after {_RECONNECT_TIMEOUT:.0f}s."
+            + (" A fresh client will connect on the next call; retry it." if replaced else "")
         ) from exc
     if not await cl.is_user_authorized():
         # cl.start() would prompt via blocking input(): it stalls the event loop
         # and, over stdio, reads protocol frames as a phone number.
-        try:
-            await cl.disconnect()
-        except Exception:
-            pass
+        await _disconnect_bounded(cl)
         raise RuntimeError(
             "Telegram session is not authorized after reconnect. Re-authorize it "
             "outside the server (session_string_generator.py) and restart."
