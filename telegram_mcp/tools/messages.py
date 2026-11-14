@@ -706,8 +706,24 @@ async def get_messages(
         )
 
 
+def _no_preview_kwargs(link_preview: bool) -> Dict[str, bool]:
+    """Telethon kwargs that suppress the link preview; empty for the default send."""
+    return {} if link_preview else {"link_preview": False}
+
+
+def _no_webpage_kwargs(link_preview: bool) -> Dict[str, bool]:
+    """Raw-request flag that suppresses the link preview; empty for the default send."""
+    return {} if link_preview else {"no_webpage": True}
+
+
 async def _send_rich(
-    cl, entity, text: str, parse_mode: str, reply_to: Optional[int] = None, silent: bool = False
+    cl,
+    entity,
+    text: str,
+    parse_mode: str,
+    reply_to: Optional[int] = None,
+    silent: bool = False,
+    link_preview: bool = True,
 ):
     """Send text as a server-parsed rich message. Returns a JSON result string."""
     import random
@@ -725,6 +741,7 @@ async def _send_rich(
                 ),
                 rich_message=make_rich_input(parse_mode, text),
                 silent=silent,
+                **_no_webpage_kwargs(link_preview),
             )
         )
     except telethon.errors.RPCError as e:
@@ -738,7 +755,9 @@ async def _send_rich(
     )
 
 
-async def _edit_rich(cl, entity, message_id: int, text: str, parse_mode: str):
+async def _edit_rich(
+    cl, entity, message_id: int, text: str, parse_mode: str, link_preview: bool = True
+):
     """Edit a message with server-parsed rich content. Returns a JSON result string."""
     if not await account_is_premium(cl):
         return premium_required_result("edit_message")
@@ -749,6 +768,7 @@ async def _edit_rich(cl, entity, message_id: int, text: str, parse_mode: str):
                 id=message_id,
                 message=text,
                 rich_message=make_rich_input(parse_mode, text),
+                **_no_webpage_kwargs(link_preview),
             )
         )
     except telethon.errors.MessageNotModifiedError:
@@ -1020,6 +1040,7 @@ async def send_message(
     account: Optional[str] = None,
     reply_to: Optional[int] = None,
     silent: bool = False,
+    link_preview: bool = True,
 ) -> str:
     """
     Send a message to a specific chat.
@@ -1057,6 +1078,8 @@ async def send_message(
         reply_to: Optional id of a message in the same chat to reply to. To post
             in a forum topic, pass the topic id (from list_topics).
         silent: Send without a notification sound (default False).
+        link_preview: If False, Telegram attaches no link preview card to the
+            message. Defaults to True (Telegram's native behavior).
     """
     try:
         cl = get_client(account)
@@ -1077,7 +1100,13 @@ async def send_message(
             return conflict
         if parse_mode and parse_mode.lower() in RICH_PARSE_MODES:
             return await _send_rich(
-                cl, entity, message, parse_mode.lower(), reply_to=reply_to, silent=silent
+                cl,
+                entity,
+                message,
+                parse_mode.lower(),
+                reply_to=reply_to,
+                silent=silent,
+                link_preview=link_preview,
             )
         if format_date or custom_emojis:
             entities, error = _plain_entities(message, format_date, custom_emojis)
@@ -1095,11 +1124,17 @@ async def send_message(
                     ),
                     entities=entities,
                     silent=silent,
+                    **_no_webpage_kwargs(link_preview),
                 )
             )
             return _sent_result(_first_sent_message_id(result))
         sent = await cl.send_message(
-            entity, message, parse_mode=parse_mode, reply_to=reply_to, silent=silent
+            entity,
+            message,
+            parse_mode=parse_mode,
+            reply_to=reply_to,
+            silent=silent,
+            **_no_preview_kwargs(link_preview),
         )
         return _sent_result(sent)
     except Exception as e:
@@ -2227,6 +2262,7 @@ async def edit_message(
     format_date: Optional[str] = None,
     custom_emojis: Optional[List[Dict[str, Any]]] = None,
     account: Optional[str] = None,
+    link_preview: bool = True,
 ) -> str:
     """
     Edit a message you sent.
@@ -2254,6 +2290,9 @@ async def edit_message(
             changed and a structured telegram_premium_required result is returned).
             Omitting it keeps the previous behavior of this tool: Telethon's client
             default (Markdown), so **bold** in existing edits still renders.
+        link_preview: If False, the edited message has no link preview card. Pass it
+            when editing a message that was sent without a preview: Telegram adds the
+            preview back on an edit that does not ask otherwise.
     """
     try:
         cl = get_client(account)
@@ -2262,7 +2301,9 @@ async def edit_message(
         if conflict:
             return conflict
         if parse_mode and parse_mode.lower() in RICH_PARSE_MODES:
-            return await _edit_rich(cl, entity, message_id, new_text, parse_mode.lower())
+            return await _edit_rich(
+                cl, entity, message_id, new_text, parse_mode.lower(), link_preview=link_preview
+            )
         if format_date or custom_emojis:
             entities, error = _plain_entities(new_text, format_date, custom_emojis)
             if error:
@@ -2273,6 +2314,7 @@ async def edit_message(
                     id=message_id,
                     message=new_text,
                     entities=entities,
+                    **_no_webpage_kwargs(link_preview),
                 )
             )
             return f"Message {message_id} edited."
@@ -2281,6 +2323,7 @@ async def edit_message(
         # parser. Passing None unconditionally would turn previously formatted
         # edits into literal text.
         extra = {"parse_mode": parse_mode} if parse_mode is not None else {}
+        extra.update(_no_preview_kwargs(link_preview))
         await cl.edit_message(entity, message_id, new_text, **extra)
         return f"Message {message_id} edited."
     except telethon.errors.MessageNotModifiedError:
