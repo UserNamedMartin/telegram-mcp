@@ -375,9 +375,9 @@ non-read-only tools from being registered and exposed through MCP. Accepted
 values are `all` (the default), `read-only`, and `read-only+<tool>,<tool>`,
 each optionally followed by `-<tool>,<tool>`.
 
-A separate, hardcoded allowlist restricts `send_voice`, `send_sticker`,
-`set_profile_photo`, and `edit_chat_photo` to their expected file extensions;
-`send_file` and `upload_file` accept any extension by default. Use
+A separate, hardcoded allowlist restricts `send_voice`, `send_video_note`,
+`send_sticker`, `set_profile_photo`, and `edit_chat_photo` to their expected file
+extensions; `send_file` and `upload_file` accept any extension by default. Use
 `TELEGRAM_FILE_EXTENSIONS` to add allowlists for those two, or to tighten or
 replace any of the hardcoded ones, in the same `tool:.ext,.ext` shape as
 `TELEGRAM_EXPOSED_TOOLS`, with entries separated by `;`:
@@ -752,7 +752,7 @@ bypassing the proxy.
 
 ## File Path Security
 
-File-path and media tools (`send_file`, `edit_message_media`, `download_media`, `upload_file`, `send_voice`, `send_sticker`, `set_profile_photo`, `edit_chat_photo`, and `send_album`) are registered and supported, but remain strictly disabled by default until allowed roots are configured (safe-by-default to prevent unauthorized file access).
+File-path and media tools (`send_file`, `edit_message_media`, `download_media`, `upload_file`, `send_voice`, `send_video_note`, `send_sticker`, `set_profile_photo`, `edit_chat_photo`, and `send_album`) are registered and supported, but remain strictly disabled by default until allowed roots are configured (safe-by-default to prevent unauthorized file access).
 
 `send_file` and `send_album` keep their existing success line and append `MessageIDs: [...]` when Telethon returns the sent messages. Album IDs follow the same order as `file_paths`; a `null` entry means Telethon could not map that position to a message ID. Pass a known ID to `edit_message_media` to replace that item.
 

@@ -1349,6 +1349,7 @@ DEFAULT_DOWNLOAD_SUBDIR = os.getenv("TELEGRAM_DOWNLOAD_SUBDIR", "downloads").str
 DISALLOWED_PATH_PATTERNS = ("*", "?", "[", "]", "{", "}", "~", "\x00")
 _DEFAULT_EXTENSION_ALLOWLISTS: dict[str, set[str]] = {
     "send_voice": {".ogg", ".opus"},
+    "send_video_note": {".mp4"},
     "send_sticker": {".webp"},
     "set_profile_photo": {".jpg", ".jpeg", ".png", ".webp"},
     "edit_chat_photo": {".jpg", ".jpeg", ".png", ".webp"},
@@ -1366,6 +1367,7 @@ MAX_FILE_BYTES: dict[str, int] = {
     "edit_message_media": 200 * 1024 * 1024,  # 200 MB
     "upload_file": 200 * 1024 * 1024,
     "send_voice": 100 * 1024 * 1024,
+    "send_video_note": 100 * 1024 * 1024,
     "send_sticker": 10 * 1024 * 1024,
     "set_profile_photo": 50 * 1024 * 1024,
     "edit_chat_photo": 50 * 1024 * 1024,

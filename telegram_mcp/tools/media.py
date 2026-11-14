@@ -791,6 +791,69 @@ async def send_voice(
 
 
 @mcp.tool(
+    annotations=ToolAnnotations(title="Send Video Note", openWorldHint=True, destructiveHint=True)
+)
+@with_account(readonly=False)
+@validate_id("chat_id")
+@flood_category("send")
+async def send_video_note(
+    chat_id: Union[int, str],
+    file_path: str,
+    topic_id: Optional[int] = None,
+    ctx: Optional[Context] = None,
+    account: Optional[str] = None,
+    silent: bool = False,
+) -> str:
+    """
+    Send a round video note to a chat. File must be an MP4. Telegram shows it best
+    when the video is square and under one minute.
+
+    Args:
+        chat_id: The chat ID or username.
+        file_path: Absolute or relative path under allowed roots to the MP4 file.
+        topic_id: Optional forum topic ID (from list_topics). Sends into that topic
+            in a forum-enabled community/supergroup. Also works as reply_to for a message.
+        silent: Send without a notification sound (default False).
+    """
+    try:
+        cl = get_client(account)
+        safe_path, path_error = await _resolve_readable_file_path(
+            raw_path=file_path,
+            ctx=ctx,
+            tool_name="send_video_note",
+        )
+        if path_error:
+            return path_error
+
+        send_kwargs = {}
+        # Real size and duration, as for send_file; Telethon alone sends 1x1, 0:00.
+        attributes = _mp4_video_attributes(str(safe_path))
+        if attributes is not None:
+            attributes.round_message = True
+            send_kwargs["attributes"] = [attributes]
+
+        entity = await resolve_entity(chat_id, cl)
+        sent = await cl.send_file(
+            entity,
+            str(safe_path),
+            video_note=True,
+            reply_to=topic_id,
+            silent=silent,
+            **send_kwargs,
+        )
+        return _append_message_ids(f"Video note sent to chat {chat_id} from {safe_path}.", sent)
+    except Exception as e:
+        return log_and_format_error(
+            "send_video_note",
+            e,
+            chat_id=chat_id,
+            file_path=file_path,
+            topic_id=topic_id,
+            silent=silent,
+        )
+
+
+@mcp.tool(
     annotations=ToolAnnotations(title="Upload File", openWorldHint=True, destructiveHint=True)
 )
 @with_account(readonly=False)
